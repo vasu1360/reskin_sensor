@@ -8,8 +8,6 @@ import serial
 
 from .sensor import ReSkinBase, ReSkinData, ReSkinDummy
 
-sys.path.insert(1, '/home/fair/Documents/vani_code/FB_Franka_SpideyHand')
-from SpideyHand import *
 
 class ReSkinProcess(Process):
     """
@@ -58,7 +56,6 @@ class ReSkinProcess(Process):
     def __init__(
         self,
         num_mags: int = 1,
-        num_press: int = 1,
         port: str = None,
         baudrate: int = 115200,
         burst_mode: bool = True,
@@ -67,12 +64,10 @@ class ReSkinProcess(Process):
         reskin_data_struct: bool = True,
         allow_dummy_sensor: bool = False,
         chunk_size: int = 10000,
-        press_port: str = None,
     ):
         """Initializes a ReSkinProcess object."""
         super(ReSkinProcess, self).__init__()
         self.num_mags = num_mags
-        self.num_press = num_press
         self.port = port
         self.baudrate = baudrate
         self.burst_mode = burst_mode
@@ -80,7 +75,6 @@ class ReSkinProcess(Process):
         self.temp_filtered = temp_filtered
         self.reskin_data_struct = reskin_data_struct
         self.allow_dummy_sensor = allow_dummy_sensor
-        self.press_port = press_port
 
         self._pipe_in, self._pipe_out = Pipe()
         self._sample_cnt = Value(ct.c_uint64)
@@ -89,7 +83,6 @@ class ReSkinProcess(Process):
         self._last_time = Value(ct.c_double)
         self._last_delay = Value(ct.c_double)
         self._last_reading = Array(ct.c_float, self.num_mags * 4)
-        self._last_reading_press = Array(ct.c_float, self.num_press * 2)
 
         self._chunk_size = chunk_size
 
@@ -98,7 +91,6 @@ class ReSkinProcess(Process):
         self._event_sending_data = Event()
 
         self._event_is_buffering = Event()
-        self.pressSensor = SpideyHand(self.press_port)
 
         atexit.register(self.join)
 
@@ -118,7 +110,6 @@ class ReSkinProcess(Process):
                     [self._last_delay.value],
                     self._last_reading[:],
                     [self.device_id],
-                    self._last_reading_press[:],
                 )
             )
         # return self._last_reading
@@ -244,12 +235,8 @@ class ReSkinProcess(Process):
                 temp_filtered=self.temp_filtered,
                 reskin_data_struct=True,
             )
-
-
             # self.sensor._initialize()
             self.start_streaming()
-
-            
         except (serial.serialutil.SerialException, AttributeError) as e:
             print("ERROR: ", e)
             if self.allow_dummy_sensor:
@@ -274,12 +261,10 @@ class ReSkinProcess(Process):
                     is_streaming = True
                     # Any logging or stuff you want to do when streaming has
                     # just started should go here
-                    sorted_data = self.pressSensor.readPress()
-                    self._last_reading_press[:] = np.concatenate((sorted_data[0], sorted_data[1], sorted_data[2])) 
                 (
                     self._last_time.value,
                     self._last_delay.value,
-                    self._last_reading[:], 
+                    self._last_reading[:],
                 ) = self.sensor.get_sample()
 
                 self._sample_cnt.value += 1

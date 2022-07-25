@@ -46,6 +46,7 @@ class ReSkinBase(serial.Serial):
         device_id: int = -1,
         temp_filtered: bool = False,
         reskin_data_struct: bool = True,
+        qtpy_timestamp: bool = True,
     ) -> None:
         """Initializes a ReSkinBase object."""
 
@@ -55,9 +56,10 @@ class ReSkinBase(serial.Serial):
         self.burst_mode = burst_mode
         self.device_id = device_id
         self.reskin_data_struct = reskin_data_struct
+        self.qtpy_timestamp = qtpy_timestamp
 
         self._msg_floats = 4 * num_mags
-        self._msg_length = 4 * self._msg_floats + 2
+        self._msg_length = 4 * self._msg_floats + 2 +4*self.qtpy_timestamp #V: add a flag for the timestamp included or not
 
         self._temp_mask = np.ones((self._msg_floats,), dtype=bool)
         if temp_filtered:
@@ -140,13 +142,21 @@ class ReSkinBase(serial.Serial):
                         "@{}fcc".format(self._msg_floats), zero_bytes
                     )[: self._msg_floats]
 
+                    if self.qtpy_timestamp == True:
+                        collect_start = decoded_zero_bytes[0]
+                        decoded_zero_bytes = decoded_zero_bytes[1:]
+
                 else:
                     zero_bytes = self.readline()
                     decoded_zero_bytes = zero_bytes.decode("utf-8")
                     decoded_zero_bytes = decoded_zero_bytes.strip()
                     decoded_zero_bytes = [float(x) for x in decoded_zero_bytes.split()]
 
-                acq_delay = time.time() - collect_start
+                if self.qtpy_timestamp == True: 
+                    acq_delay = 0
+                else:
+                    acq_delay = time.time() - collect_start
+                    
                 return collect_start, acq_delay, decoded_zero_bytes
 
             else:
