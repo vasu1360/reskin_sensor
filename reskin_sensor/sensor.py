@@ -58,8 +58,8 @@ class ReSkinBase(serial.Serial):
         self.reskin_data_struct = reskin_data_struct
         self.qtpy_timestamp = qtpy_timestamp
 
-        self._msg_floats = 4 * num_mags
-        self._msg_length = 4 * self._msg_floats + 2 +4*self.qtpy_timestamp #V: add a flag for the timestamp included or not
+        self._msg_floats = 4 * num_mags + self.qtpy_timestamp
+        self._msg_length = 4 * self._msg_floats + 2 #V: add a flag for the timestamp included or not
 
         self._temp_mask = np.ones((self._msg_floats,), dtype=bool)
         if temp_filtered:
@@ -156,7 +156,7 @@ class ReSkinBase(serial.Serial):
                     acq_delay = 0
                 else:
                     acq_delay = time.time() - collect_start
-                    
+
                 return collect_start, acq_delay, decoded_zero_bytes
 
             else:

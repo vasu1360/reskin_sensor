@@ -8,7 +8,8 @@ import serial
 
 from .sensor import ReSkinBase, ReSkinData, ReSkinDummy
 
-sys.path.insert(1, '/home/fair/Documents/vani_code/FB_Franka_SpideyHand')
+sys.path.append("/home/fair/Documents/vani_code/FB_Franka_SpideyHand")
+
 from SpideyHand import *
 
 class ReSkinProcess(Process):
@@ -64,7 +65,7 @@ class ReSkinProcess(Process):
         burst_mode: bool = True,
         device_id: int = -1,
         temp_filtered: bool = False,
-        reskin_data_struct: bool = True,
+        reskin_data_struct: bool = False,
         allow_dummy_sensor: bool = False,
         chunk_size: int = 10000,
         press_port: str = None,
@@ -89,7 +90,8 @@ class ReSkinProcess(Process):
         self._last_time = Value(ct.c_double)
         self._last_delay = Value(ct.c_double)
         self._last_reading = Array(ct.c_float, self.num_mags * 4)
-        self._last_reading_press = Array(ct.c_float, self.num_press * 2)
+        self._last_reading_press = Array(ct.c_float, self.num_press * 2 + 1)
+
 
         self._chunk_size = chunk_size
 
@@ -112,6 +114,7 @@ class ReSkinProcess(Process):
                 dev_id=self.device_id,
             )
         else:
+            # print("helloooo")
             return np.concatenate(
                 (
                     [self._last_time.value],
@@ -234,6 +237,7 @@ class ReSkinProcess(Process):
         """This loop runs until it's asked to quit."""
         buffer = []
         # Initialize sensor
+        
         try:
             self.sensor = ReSkinBase(
                 num_mags=self.num_mags,
@@ -275,7 +279,8 @@ class ReSkinProcess(Process):
                     # Any logging or stuff you want to do when streaming has
                     # just started should go here
                     sorted_data = self.pressSensor.readPress()
-                    self._last_reading_press[:] = np.concatenate((sorted_data[0], sorted_data[1], sorted_data[2])) 
+                    # print(np.shape(sorted_data.true))
+                    self._last_reading_press[:] = np.concatenate(([sorted_data.timestamp_us], sorted_data.command, sorted_data.true)) 
                 (
                     self._last_time.value,
                     self._last_delay.value,
