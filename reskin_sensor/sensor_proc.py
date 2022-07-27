@@ -1,7 +1,7 @@
 import atexit
 import ctypes as ct
 import sys
-from multiprocessing import Process, Event, Pipe, Value, Array
+from multiprocessing import Process, Event, Pipe, Value, Array, current_process
 
 import numpy as np
 import serial
@@ -68,7 +68,8 @@ class ReSkinProcess(Process):
         reskin_data_struct: bool = False,
         allow_dummy_sensor: bool = False,
         chunk_size: int = 10000,
-        press_port: str = None,
+        gripper = None
+        # press_port: str = None,
     ):
         """Initializes a ReSkinProcess object."""
         super(ReSkinProcess, self).__init__()
@@ -81,7 +82,8 @@ class ReSkinProcess(Process):
         self.temp_filtered = temp_filtered
         self.reskin_data_struct = reskin_data_struct
         self.allow_dummy_sensor = allow_dummy_sensor
-        self.press_port = press_port
+        # self.press_port = press_port
+        self.pressSensor = gripper
 
         self._pipe_in, self._pipe_out = Pipe()
         self._sample_cnt = Value(ct.c_uint64)
@@ -98,9 +100,9 @@ class ReSkinProcess(Process):
         self._event_is_streaming = Event()
         self._event_quit_request = Event()
         self._event_sending_data = Event()
-
+        self._event_is_press_streaming = Event()
         self._event_is_buffering = Event()
-        self.pressSensor = SpideyHand(self.press_port)
+        
 
         atexit.register(self.join)
 
@@ -192,7 +194,16 @@ class ReSkinProcess(Process):
             samples.append(self.last_reading)
 
         return samples
-
+    
+    def send_command(self, cmd):
+        self._event_is_press_streaming.set()
+        time.sleep(0.001) #why does this work when I add a delay?
+        # print(self._event_is_press_streaming.is_set())
+        self.pressSensor.setPress(cmd)
+        self._event_is_press_streaming.clear()
+        # print(self._event_is_press_streaming.is_set())
+        return None
+        
     def get_buffer(self, timeout: float = 1.0, pause_if_buffering: bool = False):
         """
         Return the recorded buffer
@@ -220,7 +231,7 @@ class ReSkinProcess(Process):
         if self._event_sending_data.is_set() or self._buffer_size.value > 0:
             self._event_sending_data.wait(timeout=timeout)
             while self._pipe_in.poll() or self._buffer_size.value > 0:
-                rtn.extend(self._pipe_in.recv())
+                rtn.extend(self._pipe_in.recv()) #stalling here
             self._event_sending_data.clear()
 
         return rtn
@@ -232,12 +243,17 @@ class ReSkinProcess(Process):
         self.pause_streaming()
 
         super(ReSkinProcess, self).join(timeout)
+    
+    def writeFile(self, buffered_data, filename):
+        np.savetxt(filename, buffered_data)
+        print("\n Data saved! \n")
 
     def run(self):
         """This loop runs until it's asked to quit."""
         buffer = []
         # Initialize sensor
-        
+        # self.pressSensor = SpideyHand(self.press_port) #initialize this outside of the class
+
         try:
             self.sensor = ReSkinBase(
                 num_mags=self.num_mags,
@@ -272,15 +288,22 @@ class ReSkinProcess(Process):
                 sys.exit(-1)
 
         is_streaming = False
+
         while not self._event_quit_request.is_set():
             if self._event_is_streaming.is_set():
                 if not is_streaming:
                     is_streaming = True
                     # Any logging or stuff you want to do when streaming has
                     # just started should go here
+                
+                
+                if not self._event_is_press_streaming.is_set(): 
+                    # print(self._event_is_press_streaming.is_set())
                     sorted_data = self.pressSensor.readPress()
-                    # print(np.shape(sorted_data.true))
-                    self._last_reading_press[:] = np.concatenate(([sorted_data.timestamp_us], sorted_data.command, sorted_data.true)) 
+                    if sorted_data is not None:
+                        self._last_reading_press[:] = np.concatenate(([sorted_data.timestamp_us], sorted_data.command, sorted_data.true)) 
+                else:
+                    self._last_reading_press[:] = [0.0]*9
                 (
                     self._last_time.value,
                     self._last_delay.value,
