@@ -1,10 +1,12 @@
 import atexit
 import ctypes as ct
+import multiprocessing
 import sys
 from multiprocessing import Process, Event, Pipe, Value, Array, current_process
 
 import numpy as np
 import serial
+import time
 
 from .sensor import ReSkinBase, ReSkinData, ReSkinDummy
 
@@ -12,9 +14,12 @@ sys.path.append("/home/fair/Documents/vani_code/FB_Franka_SpideyHand")
 
 from SpideyHand import *
 
+
+
 class ReSkinProcess(Process):
     """
     Process to keep ReSkin datastream running in the background.
+    This original script written by Raunaq Bhirangi was modified by Vani Sundaram to interface with a PneuNet system 
 
     Attributes
     ----------
@@ -102,6 +107,7 @@ class ReSkinProcess(Process):
         self._event_sending_data = Event()
         self._event_is_press_streaming = Event()
         self._event_is_buffering = Event()
+        # self.lockPress = multiprocessing.Lock()
         
 
         atexit.register(self.join)
@@ -185,7 +191,7 @@ class ReSkinProcess(Process):
         samples = [self.last_reading]
         while len(samples) < num_samples:
             if not self._event_is_streaming.is_set():
-                print("Please start streaming first.")
+                # print("Please start streaming first.")
                 return []
             # print(self._sample_cnt.value)
             if last_cnt == self._sample_cnt.value:
@@ -197,11 +203,14 @@ class ReSkinProcess(Process):
     
     def send_command(self, cmd):
         self._event_is_press_streaming.set()
-        time.sleep(0.001) #why does this work when I add a delay?
-        # print(self._event_is_press_streaming.is_set())
+        # print(f"inside send_command:{self.pressSensor.test_attr}")
+        # self.lockPress.acquire()
+        # self.pause_streaming()
+        time.sleep(0.001) 
         self.pressSensor.setPress(cmd)
         self._event_is_press_streaming.clear()
-        # print(self._event_is_press_streaming.is_set())
+        # self.lockPress.release()
+        # self.start_streaming()
         return None
         
     def get_buffer(self, timeout: float = 1.0, pause_if_buffering: bool = False):
@@ -297,6 +306,11 @@ class ReSkinProcess(Process):
                     # just started should go here
                 
                 
+                # self.lockPress.acquire()
+                # time.sleep(0.001)
+                # print(self._event_is_press_streaming.is_set())
+                # sorted_data = self.pressSensor.readPress()
+                # self.lockPress.release()
                 if not self._event_is_press_streaming.is_set(): 
                     # print(self._event_is_press_streaming.is_set())
                     sorted_data = self.pressSensor.readPress()
@@ -304,6 +318,7 @@ class ReSkinProcess(Process):
                         self._last_reading_press[:] = np.concatenate(([sorted_data.timestamp_us], sorted_data.command, sorted_data.true)) 
                 else:
                     self._last_reading_press[:] = [0.0]*9
+
                 (
                     self._last_time.value,
                     self._last_delay.value,
